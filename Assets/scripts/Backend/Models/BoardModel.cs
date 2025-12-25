@@ -1,37 +1,63 @@
+﻿using UnityEngine;
+
 public class BoardModel
 {
-    // Notion�d�l: �Ֆʂ̃f�[�^
-    public BallColor[][,] BallGrid { get; private set; }
+    // 盤面データ：3次元配列 [段(z), 横(x), 奥(y)]
+    // ピロスは最大4段、広さは最大4x4なので [4, 4, 4] で確保します
+    private PlayerColor[,,] _balls = new PlayerColor[4, 4, 4];
 
-    public BoardModel()
+    // -------------------------------------------------------
+    // 必要なメソッド：HasBall (ボールがあるか？)
+    // -------------------------------------------------------
+    public bool HasBall(int x, int y, int z)
     {
-        BallGrid = new BallColor[4][,];
-        BallGrid[0] = new BallColor[4, 4];
-        BallGrid[1] = new BallColor[3, 3];
-        BallGrid[2] = new BallColor[2, 2];
-        BallGrid[3] = new BallColor[1, 1];
+        // そもそも盤面の範囲外なら「ボールはない」として扱う
+        if (!IsInsideBoard(x, y, z)) return false;
+
+        // None じゃなければ「ボールがある」
+        return _balls[z, x, y] != PlayerColor.None;
     }
 
-    public void PlaceBall(PylosCoordinate coord, BallColor color)
+    // -------------------------------------------------------
+    // 必要なメソッド：GetColor (そこの色は？)
+    // -------------------------------------------------------
+    public PlayerColor GetColor(int x, int y, int z)
     {
-        BallGrid[coord.Level][coord.X, coord.Y] = color;
+        // 範囲外なら「なし」を返す
+        if (!IsInsideBoard(x, y, z)) return PlayerColor.None;
+
+        return _balls[z, x, y];
     }
 
-    public void RemoveBall(PylosCoordinate coord)
+    // -------------------------------------------------------
+    // （おまけ）ボールを置くメソッド
+    // これがないとテストできないと思うので入れておきます
+    // -------------------------------------------------------
+    public void PlaceBall(int x, int y, int z, PlayerColor color)
     {
-        BallGrid[coord.Level][coord.X, coord.Y] = BallColor.None;
+        if (IsInsideBoard(x, y, z))
+        {
+            _balls[z, x, y] = color;
+        }
     }
 
-    public bool IsValidCoordinate(PylosCoordinate coord)
+    // -------------------------------------------------------
+    // 補助：その座標は盤面の中か？（ピラミッド型チェック）
+    // -------------------------------------------------------
+    private bool IsInsideBoard(int x, int y, int z)
     {
-        if (coord.Level < 0 || coord.Level > 3) return false;
-        int max = 3 - coord.Level;
-        return coord.X >= 0 && coord.X <= max && coord.Y >= 0 && coord.Y <= max;
-    }
+        // 1. 段(z)のチェック: 0〜3段目まで
+        if (z < 0 || z > 3) return false;
 
-    public BallColor GetColor(PylosCoordinate coord)
-    {
-        if (!IsValidCoordinate(coord)) return BallColor.None;
-        return BallGrid[coord.Level][coord.X, coord.Y];
+        // 2. 広さのチェック: 段が上がるごとに狭くなる
+        // 0段目(z=0) -> 4x4 (index 0~3)
+        // 1段目(z=1) -> 3x3 (index 0~2)
+        // 2段目(z=2) -> 2x2 (index 0~1)
+        // 3段目(z=3) -> 1x1 (index 0)
+
+        int limit = 4 - z; // その段の最大サイズ
+
+        // xとyが 0以上 かつ limit未満 ならOK
+        return (x >= 0 && x < limit) && (y >= 0 && y < limit);
     }
 }
