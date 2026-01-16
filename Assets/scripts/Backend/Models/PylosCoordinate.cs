@@ -1,16 +1,17 @@
-// 座標（X, Y, Z）をセットで扱うためのクラス
+using UnityEngine;
+
 [System.Serializable]
-public class PylosCoordinate
+public struct PylosCoordinate
 {
+    // Notionの定義通り (Level, X, Y)
+    public int Level;
     public int X;
     public int Y;
-    public int Z;
 
-    // コンストラクタ（作るときに数字を入れる）
-    public PylosCoordinate(int x, int y, int z)
+    public PylosCoordinate(int x, int y, int level)
     {
         this.X = x;
         this.Y = y;
-        this.Z = z;
+        this.Level = level;
     }
 }
