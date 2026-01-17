@@ -32,7 +32,7 @@ public static class CoordinateConverter
     public static Vector3 ToWorldPosition(PylosCoordinate coord)
     {
         float x = coord.X * GridSize;
-        float y = coord.Z * GridSize; // Zがレベル（高さ）
+        float y = coord.Level * GridSize; // Levelがレベル（高さ）
         float z = coord.Y * GridSize; // Yが奥行き
         
         return BoardOrigin + new Vector3(x, y, z);

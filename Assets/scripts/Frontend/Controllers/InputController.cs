@@ -25,7 +25,7 @@ public class InputController : MonoBehaviour
         if (Physics.Raycast(ray, out RaycastHit hit))
         {
             var coord = CoordinateConverter.ToPylosCoordinate(hit.point);
-            Debug.Log($"Clicked: L{coord.Z} ({coord.X},{coord.Y})");
+            Debug.Log($"Clicked: L{coord.Level} ({coord.X},{coord.Y})");
             OnBoardClicked?.Invoke(coord);
         }
     }
