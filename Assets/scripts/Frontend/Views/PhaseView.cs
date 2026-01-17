@@ -1,7 +1,15 @@
 using UnityEngine;
 using UnityEngine.UI;
 
-// 現在のフェーズやメッセージのUI表示
+/// <summary>
+/// 現在のフェーズやメッセージのUI表示
+/// 
+/// このクラスはGameInitializerに依存しません。
+/// 手動設定でも動作します：
+/// - Canvasにこのコンポーネントをアタッチ
+/// - InspectorでUI要素（Text、Panel）を設定
+/// - または、UI要素を名前（PhaseText、PlayerText、MessageText、MessagePanel）で作成すると自動検索されます
+/// </summary>
 public class PhaseView : MonoBehaviour
 {
     [Header("UI参照")]
@@ -19,6 +27,33 @@ public class PhaseView : MonoBehaviour
         if (presenter == null)
         {
             presenter = FindObjectOfType<PylosGamePresenter>();
+        }
+        
+        // UI要素が設定されていない場合は自動検索
+        // 注意: 手動設定の場合は、以下の名前でGameObjectを作成してください
+        // - PhaseText, PlayerText, MessageText, MessagePanel
+        if (phaseText == null)
+        {
+            phaseText = FindUIElement<Text>("PhaseText");
+        }
+        
+        if (playerText == null)
+        {
+            playerText = FindUIElement<Text>("PlayerText");
+        }
+        
+        if (messageText == null)
+        {
+            messageText = FindUIElement<Text>("MessageText");
+        }
+        
+        if (messagePanel == null)
+        {
+            GameObject panelObj = FindUIElementByName("MessagePanel");
+            if (panelObj != null)
+            {
+                messagePanel = panelObj;
+            }
         }
         
         // 初期状態ではメッセージパネルを非表示
@@ -155,6 +190,79 @@ public class PhaseView : MonoBehaviour
         {
             messagePanel.SetActive(false);
         }
+    }
+
+    /// <summary>
+    /// UI要素を検索する（GameInitializerに依存しない独立した検索機能）
+    /// まず名前で検索し、見つからない場合はCanvas内を検索
+    /// </summary>
+    private T FindUIElement<T>(string name) where T : Component
+    {
+        GameObject obj = FindUIElementByName(name);
+        if (obj != null)
+        {
+            T component = obj.GetComponent<T>();
+            if (component != null)
+            {
+                return component;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// GameObjectを名前で検索（GameInitializerに依存しない独立した検索機能）
+    /// </summary>
+    private GameObject FindUIElementByName(string name)
+    {
+        // まず名前で直接検索
+        GameObject obj = GameObject.Find(name);
+        if (obj != null)
+        {
+            return obj;
+        }
+
+        // Canvas内を検索
+        Canvas canvas = GetComponentInParent<Canvas>();
+        if (canvas == null)
+        {
+            canvas = FindObjectOfType<Canvas>();
+        }
+
+        if (canvas != null)
+        {
+            // Canvasの子要素を再帰的に検索
+            Transform found = FindChildByName(canvas.transform, name);
+            if (found != null)
+            {
+                return found.gameObject;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// 子要素を名前で再帰的に検索
+    /// </summary>
+    private Transform FindChildByName(Transform parent, string name)
+    {
+        if (parent.name == name)
+        {
+            return parent;
+        }
+
+        foreach (Transform child in parent)
+        {
+            Transform found = FindChildByName(child, name);
+            if (found != null)
+            {
+                return found;
+            }
+        }
+
+        return null;
     }
 }
 
