@@ -4,8 +4,7 @@ using System.Collections.Generic;
 /// <summary>
 /// 盤面の3D表示管理
 /// 
-/// このクラスはGameInitializerに依存しません。
-/// 手動設定でも動作します：
+/// 手動設定方法：
 /// - GameObjectを作成してこのコンポーネントをアタッチ
 /// - InspectorでPresenterとボールプレハブを設定（または自動生成されます）
 /// </summary>

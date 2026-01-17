@@ -2,11 +2,6 @@ using UnityEngine;
 
 /// <summary>
 /// バックとフロントをつなぐ橋渡し役
-/// 
-/// このクラスはGameInitializerに依存しません。
-/// 手動設定でも動作します：
-/// - GameObjectを作成してこのコンポーネントをアタッチするだけです
-/// - 他のコンポーネント（BoardView、PhaseView、InputController）から自動検索されます
 /// </summary>
 public class PylosGamePresenter : MonoBehaviour
 {

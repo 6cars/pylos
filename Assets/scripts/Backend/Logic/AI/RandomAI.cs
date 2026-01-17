@@ -9,7 +9,7 @@ public class AIAction
 
     public ActionType Type;
     public PylosCoordinate To;   // �ǂ��ɒu����
-    public PylosCoordinate From; // �ǂ����玝���Ă��邩�i�ړ��̏ꍇ�̂ݎg�p�j
+    public PylosCoordinate? From; // �ǂ����玝���Ă��邩�i�ړ��̏ꍇ�̂ݎg�p�j
 }
 
 public class RandomAI : IAIAlgorithm
@@ -116,7 +116,7 @@ public class RandomAI : IAIAlgorithm
     // ----------------------------------------------------
     // 2. ����t�F�[�Y�̎v�l�i������� or ���Ȃ� �������_���I���j
     // ----------------------------------------------------
-    public PylosCoordinate GetRecoveryMove(BoardModel board, PlayerModel me)
+    public PylosCoordinate? GetRecoveryMove(BoardModel board, PlayerModel me)
     {
         // ����ł���{�[���̃��X�g
         List<PylosCoordinate> removableBalls = new List<PylosCoordinate>();

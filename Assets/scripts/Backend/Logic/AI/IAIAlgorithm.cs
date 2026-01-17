@@ -1,9 +1,9 @@
-// AI‚Ìu‹¤’Êƒ‹[ƒ‹v‚ğŒˆ‚ß‚éƒCƒ“ƒ^[ƒtƒF[ƒX
+// AIï¿½Ìuï¿½ï¿½ï¿½Êƒï¿½ï¿½[ï¿½ï¿½ï¿½vï¿½ï¿½ï¿½ï¿½ï¿½ß‚ï¿½Cï¿½ï¿½ï¿½^ï¿½[ï¿½tï¿½Fï¿½[ï¿½X
 public interface IAIAlgorithm
 {
-    // 1. İ’uƒtƒF[ƒYF‚Ç‚¤“®‚­‚©Œˆ‚ß‚éi”z’u or ˆÚ“®j
+    // 1. ï¿½İ’uï¿½tï¿½Fï¿½[ï¿½Yï¿½Fï¿½Ç‚ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ß‚ï¿½iï¿½zï¿½u or ï¿½Ú“ï¿½ï¿½j
     AIAction GetSetupMove(BoardModel board, PlayerModel me);
 
-    // 2. ‰ñûƒtƒF[ƒYF‚Ç‚ê‚ğ‰ñû‚·‚é‚©Œˆ‚ß‚éi‰ñû or ƒpƒXj
-    PylosCoordinate GetRecoveryMove(BoardModel board, PlayerModel me);
+    // 2. ï¿½ï¿½ï¿½ï¿½tï¿½Fï¿½[ï¿½Yï¿½Fï¿½Ç‚ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½é‚©ï¿½ï¿½ï¿½ß‚ï¿½iï¿½ï¿½ï¿½ or ï¿½pï¿½Xï¿½j
+    PylosCoordinate? GetRecoveryMove(BoardModel board, PlayerModel me);
 }
