@@ -3,7 +3,6 @@ using UnityEngine;
 [System.Serializable]
 public struct PylosCoordinate
 {
-    // Notion‚Ì’è‹`’Ê‚è (Level, X, Y)
     public int Level;
     public int X;
     public int Y;
