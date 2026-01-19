@@ -2,18 +2,26 @@ using UnityEngine;
 
 public class Rules
 {
-    // -------------------------------------------------------
+    // =======================================================
     // 1. 置けるか判定 (CanPlaceAt)
-    // -------------------------------------------------------
+    // =======================================================
+
+    // ★六車くん(PhaseManager)用：数字4つで呼ばれてもOKにする
     public bool CanPlaceAt(BoardModel board, int x, int y, int z)
     {
-        // すでにボールがあるならNG
-        if (board.HasBall(x, y, z)) return false;
+        return CanPlaceAt(board, new PylosCoordinate(x, y, z));
+    }
 
-        // 1段目 (z=0) は土台不要なのでOK
+    // ★Notion設計用：座標クラスで処理する
+    public bool CanPlaceAt(BoardModel board, PylosCoordinate coord)
+    {
+        int x = coord.X;
+        int y = coord.Y;
+        int z = coord.Level; // 手順1を直せば、ここの赤線が消えます！
+
+        if (board.HasBall(x, y, z)) return false;
         if (z == 0) return true;
 
-        // 2段目以降は、下の段 (z-1) の4箇所にボールが必要
         bool support1 = board.HasBall(x, y, z - 1);
         bool support2 = board.HasBall(x + 1, y, z - 1);
         bool support3 = board.HasBall(x, y + 1, z - 1);
@@ -22,112 +30,116 @@ public class Rules
         return support1 && support2 && support3 && support4;
     }
 
-    // -------------------------------------------------------
-    // 2. 動かせるか/回収できるか判定 (CanRemoveBall)
-    // -------------------------------------------------------
+    // =======================================================
+    // 2. 回収可能か判定 (CanRemoveAt / CanRemoveBall)
+    // =======================================================
+
+    // ★六車くん用
     public bool CanRemoveBall(BoardModel board, int x, int y, int z)
     {
+        return CanRemoveAt(board, new PylosCoordinate(x, y, z));
+    }
+
+    // ★Notion設計用
+    public bool CanRemoveAt(BoardModel board, PylosCoordinate coord)
+    {
+        int x = coord.X;
+        int y = coord.Y;
+        int z = coord.Level;
+
         if (!board.HasBall(x, y, z)) return false;
-        if (z == 3) return true; // 頂上は絶対OK
+        if (z == 3) return true;
 
-        // 自分より上の段 (z+1) にあるボールから支えられていないかチェック
-        var offsets = new (int dx, int dy)[]
-        {
-            (-1, -1), (0, -1), (-1, 0), (0, 0)
-        };
-
+        var offsets = new (int dx, int dy)[] { (-1, -1), (0, -1), (-1, 0), (0, 0) };
         foreach (var (dx, dy) in offsets)
         {
             int upperX = x + dx;
             int upperY = y + dy;
             int upperZ = z + 1;
-
-            if (board.HasBall(upperX, upperY, upperZ))
-            {
-                return false;
-            }
+            if (board.HasBall(upperX, upperY, upperZ)) return false;
         }
         return true;
     }
 
-    // -------------------------------------------------------
+    // =======================================================
     // 3. 回収権発生判定 (CheckRecovery)
-    // -------------------------------------------------------
-    public bool CheckRecovery(BoardModel board, int x, int y, int z, PlayerColor myColor)
+    // =======================================================
+
+    // ★六車くん用 (引数が多いやつに対応)
+    public bool CheckRecovery(BoardModel board, int x, int y, int z, PlayerColor color)
     {
-        // A. 正方形判定（公式ルール）
-        if (CheckSquareFormation(board, x, y, z, myColor)) return true;
+        return CheckRecovery(board, new PylosCoordinate(x, y, z), color);
+    }
 
-        // B. 縦横ライン判定（オリジナルルール：全段有効）
-        // ※z=0なら4つ、z=1なら3つ、z=2なら2つ揃えばOKとします
-        if (CheckLineFormation(board, x, y, z, myColor)) return true;
-
+    // ★Notion設計用
+    public bool CheckRecovery(BoardModel board, PylosCoordinate coord, PlayerColor myColor)
+    {
+        if (CheckSquareFormation(board, coord)) return true;
+        if (CheckLineFormation(board, coord)) return true;
         return false;
     }
 
-    // -------------------------------------------------------
-    // 4. 勝利判定
-    // -------------------------------------------------------
+    // =======================================================
+    // 4. ゲーム終了判定 (IsGameOver / CheckWin)
+    // =======================================================
+
+    // ★Notion設計用
+    public bool IsGameOver(BoardModel board)
+    {
+        return board.HasBall(0, 0, 3);
+    }
+
+    // ★六車くん(PhaseManager)用：CheckWinという名前で呼ばれても対応する
+    public bool CheckWin(BoardModel board)
+    {
+        return IsGameOver(board);
+    }
+
+    // オーバーロード（引数が違う場合用）
     public bool CheckWin(int z)
     {
         return z == 3;
     }
 
     // =======================================================
-    // 内部ロジック (Private)
+    // 内部ロジック (Public)
     // =======================================================
-
-    // 正方形判定
-    private bool CheckSquareFormation(BoardModel board, int placedX, int placedY, int placedZ, PlayerColor myColor)
+    public bool CheckSquareFormation(BoardModel board, PylosCoordinate coord)
     {
-        var offsets = new (int dx, int dy)[] { (0, 0), (-1, 0), (0, -1), (-1, -1) };
+        int placedX = coord.X;
+        int placedY = coord.Y;
+        int placedZ = coord.Level;
+        PlayerColor myColor = board.GetColor(placedX, placedY, placedZ);
+        if (myColor == PlayerColor.None) return false;
 
+        var offsets = new (int dx, int dy)[] { (0, 0), (-1, 0), (0, -1), (-1, -1) };
         foreach (var (dx, dy) in offsets)
         {
             int cx = placedX + dx;
             int cy = placedY + dy;
-
             if (board.GetColor(cx, cy, placedZ) == myColor &&
                 board.GetColor(cx + 1, cy, placedZ) == myColor &&
                 board.GetColor(cx, cy + 1, placedZ) == myColor &&
-                board.GetColor(cx + 1, cy + 1, placedZ) == myColor)
-            {
-                return true;
-            }
+                board.GetColor(cx + 1, cy + 1, placedZ) == myColor) return true;
         }
         return false;
     }
 
-    // 縦横ライン判定 (全段対応)
-    private bool CheckLineFormation(BoardModel board, int placedX, int placedY, int z, PlayerColor myColor)
+    public bool CheckLineFormation(BoardModel board, PylosCoordinate coord)
     {
-        // その段の1辺の長さ (z=0->4, z=1->3, z=2->2)
-        int limit = 4 - z;
+        int placedX = coord.X;
+        int placedY = coord.Y;
+        int z = coord.Level;
+        PlayerColor myColor = board.GetColor(placedX, placedY, z);
+        if (myColor == PlayerColor.None) return false;
 
-        // 1. 横方向 (Row) チェック
-        // 今置いた行 (placedY) の端から端まで全て自分の色か？
+        int limit = 4 - z;
         bool rowOk = true;
-        for (int x = 0; x < limit; x++)
-        {
-            if (board.GetColor(x, placedY, z) != myColor)
-            {
-                rowOk = false;
-                break;
-            }
-        }
+        for (int x = 0; x < limit; x++) if (board.GetColor(x, placedY, z) != myColor) { rowOk = false; break; }
         if (rowOk) return true;
 
-        // 2. 縦方向 (Col) チェック
-        // 今置いた列 (placedX) の端から端まで全て自分の色か？
         bool colOk = true;
-        for (int y = 0; y < limit; y++)
-        {
-            if (board.GetColor(placedX, y, z) != myColor)
-            {
-                colOk = false;
-                break;
-            }
-        }
+        for (int y = 0; y < limit; y++) if (board.GetColor(placedX, y, z) != myColor) { colOk = false; break; }
         if (colOk) return true;
 
         return false;
