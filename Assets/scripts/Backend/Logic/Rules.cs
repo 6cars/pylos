@@ -19,6 +19,12 @@ public class Rules
         int y = coord.Y;
         int z = coord.Level; // 手順1を直せば、ここの赤線が消えます！
 
+        // そもそも盤面の範囲外なら、問答無用で「置けない」と答える
+        int limit = 4 - z;
+        if (x < 0 || x >= limit || y < 0 || y >= limit || z < 0 || z > 3)
+        {
+            return false;
+        }
         if (board.HasBall(x, y, z)) return false;
         if (z == 0) return true;
 
