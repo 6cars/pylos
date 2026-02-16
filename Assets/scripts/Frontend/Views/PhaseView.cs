@@ -10,6 +10,8 @@ public class PhaseView : MonoBehaviour
     public TextMeshProUGUI playerText;
     public TextMeshProUGUI messageText;
 
+    public TextMeshProUGUI recoveryText; // ★回収権の残り数を表示
+
     public GameObject messagePanel;
 
     [Header("System")]
@@ -19,6 +21,16 @@ public class PhaseView : MonoBehaviour
     public void UpdatePhaseText(string text)
     {
         if (phaseText != null) phaseText.text = text;
+    }
+    public void UpdateRecoveryText(int count)
+    {
+        if (recoveryText != null)
+        {
+            if (count > 0)
+                recoveryText.text = $"回収権: 残り{count}個";
+            else
+                recoveryText.text = ""; // 0個なら表示しない
+        }
     }
 
     public void UpdatePlayerText(string text, Color color)
