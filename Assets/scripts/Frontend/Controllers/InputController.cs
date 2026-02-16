@@ -1,46 +1,175 @@
+/*using UnityEngine;
+
+// クリック検知など
+public class InputController : MonoBehaviour
+{
+    // TODO: 実装
+}*/
+//ここから実装
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
+using System;
 
 public class InputController : MonoBehaviour
 {
-    [Header("References")]
-    public Camera mainCamera;           // カメラ
-    public PylosGamePresenter presenter; // ★これが足りなかった！
+    public Action<PylosCoordinate> OnBoardClicked;
+
+    [SerializeField] private Camera mainCamera;
+    [SerializeField] private PylosGamePresenter presenter;
+
+    private void Awake()
+    {
+        Debug.Log("InputController: 初期化開始");
+        
+        // プレゼンターが設定されていない場合は自動検索
+        if (presenter == null)
+        {
+            presenter = FindObjectOfType<PylosGamePresenter>();
+        }
+        
+        if (presenter == null)
+        {
+            Debug.LogError("InputController: PylosGamePresenterが見つかりません！");
+        }
+        else
+        {
+            Debug.Log("InputController: PylosGamePresenterを検出しました");
+        }
+        
+        // カメラが設定されていない場合は自動検索
+        if (mainCamera == null)
+        {
+            mainCamera = Camera.main;
+        }
+        
+        if (mainCamera == null)
+        {
+            Debug.LogError("InputController: カメラが見つかりません！");
+        }
+        else
+        {
+            Debug.Log($"InputController: カメラを検出しました - {mainCamera.name}");
+        }
+    }
+    
+    private void Start()
+    {
+        Debug.Log("InputController: Start() が呼ばれました");
+    }
 
     void Update()
     {
-        // 左クリック (0) を押した瞬間
-        if (Input.GetMouseButtonDown(0))
+        if (!Input.GetMouseButtonDown(0)) return;
+
+        Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
+        if (Physics.Raycast(ray, out RaycastHit hit))
         {
-            HandleClick();
+            // クリック位置からマス（x, y）を取得
+            Vector3 relativePos = hit.point;
+            int x = Mathf.RoundToInt(relativePos.x / 1.0f);
+            int y = Mathf.RoundToInt(relativePos.z / 1.0f); // UnityではZが奥行き
+            
+            // 範囲チェック
+            if (x < 0 || x > 3 || y < 0 || y > 3)
+            {
+                Debug.Log($"クリック位置が盤面外: ({x}, {y})");
+                return;
+            }
+            
+            // プレゼンターに処理を委譲
+            if (presenter != null)
+            {
+                PhaseState currentPhase = presenter.GetCurrentPhase();
+                
+                if (currentPhase == PhaseState.Placement)
+                {
+                    // 設置フェーズ: そのマスで置ける最も低いレベルを自動選択
+                    int bestLevel = FindBestPlacementLevel(presenter, x, y);
+                    if (bestLevel >= 0)
+                    {
+                        Debug.Log($"配置試行: ({x}, {y}, {bestLevel})");
+                        presenter.TryPlaceBall(x, y, bestLevel);
+                    }
+                    else
+                    {
+                        Debug.Log($"配置不可: ({x}, {y}) - このマスには置けません");
+                    }
+                }
+                else if (currentPhase == PhaseState.Retrieval)
+                {
+                    // 回収フェーズ: そのマスの最高レベルのボールを回収
+                    int topLevel = FindTopLevel(presenter, x, y);
+                    if (topLevel >= 0)
+                    {
+                        Debug.Log($"回収試行: ({x}, {y}, {topLevel})");
+                        presenter.TryRecoverBall(x, y, topLevel);
+                    }
+                    else
+                    {
+                        Debug.Log($"回収不可: ({x}, {y}) - このマスにボールがありません");
+                    }
+                }
+            }
         }
     }
-
-    private void HandleClick()
+    
+    /// <summary>
+    /// 指定マス（x, y）で置ける最も低いレベルを探す
+    /// </summary>
+    private int FindBestPlacementLevel(PylosGamePresenter presenter, int x, int y)
     {
-        if (mainCamera == null || presenter == null) return;
-
-        // マウスの位置からビームを飛ばす
-        Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
-        RaycastHit hit;
-
-        // ビームが何かに当たったら
-        if (Physics.Raycast(ray, out hit))
+        // z=0から順に試して、最初に置けるレベルを返す
+        for (int z = 0; z < 4; z++)
         {
-            // 当たった場所の座標を取得
-            Vector3 hitPoint = hit.point;
-
-            // Unityの座標(X, Z)を、ボードのマス目(x, y)に変換する計算
-            // (1.0fはボールの間隔。BoardViewの設定と合わせる必要があります)
-            int x = Mathf.RoundToInt(hitPoint.x / 1.0f);
-            int y = Mathf.RoundToInt(hitPoint.z / 1.0f);
-
-            // 高さ(Z)は、とりあえず一番下(0)から順に置いていく前提、
-            // またはクリックした高さから判定するなどロジックが必要ですが、
-            // まずは「一番下の段(0)に置く」か「Presenterに任せる」形で渡します。
-
-            // ここでは簡易的に「クリックした位置に置く」命令を出します
-            // ※本来は高さの計算も必要ですが、まずは平面(0段目)でテストしましょう
-            presenter.TryPlaceBall(x, y, 0);
+            // そのレベルでの範囲チェック
+            int limit = 4 - z;
+            if (x >= limit || y >= limit)
+            {
+                // このレベルでは範囲外なので、それ以上はチェックしない
+                Debug.Log($"配置判定: ({x}, {y}) はレベル{z}では範囲外 (limit={limit})");
+                break;
+            }
+            
+            // ルールチェック
+            bool canPlace = presenter.CanPlaceAt(x, y, z);
+            Debug.Log($"配置判定: ({x}, {y}, {z}) = {canPlace}");
+            
+            if (canPlace)
+            {
+                Debug.Log($"配置可能なレベルを発見: ({x}, {y}, {z})");
+                return z;
+            }
         }
+        
+        Debug.Log($"配置不可: ({x}, {y}) には置けるレベルが見つかりませんでした");
+        return -1; // 置けるレベルが見つからない
+    }
+    
+    /// <summary>
+    /// 指定マス（x, y）の最高レベルを取得
+    /// </summary>
+    private int FindTopLevel(PylosGamePresenter presenter, int x, int y)
+    {
+        var board = presenter.GetBoardModel();
+        if (board == null) return -1;
+        
+        // 上から順にチェックして、最初に見つかったボールのレベルを返す
+        for (int z = 3; z >= 0; z--)
+        {
+            int limit = 4 - z;
+            if (x >= limit || y >= limit) continue;
+            
+            if (board.HasBall(x, y, z))
+            {
+                return z;
+            }
+        }
+        
+        return -1; // ボールが見つからない
     }
 }
+
+
+
+
