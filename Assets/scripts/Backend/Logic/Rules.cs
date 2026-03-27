@@ -150,4 +150,33 @@ public class Rules
 
         return false;
     }
+
+    // =======================================================
+    // 5. ボールの移動判定 (CanMoveBall)
+    // =======================================================
+    public bool CanMoveBall(BoardModel board, PylosCoordinate from, PylosCoordinate to, PlayerColor myColor)
+    {
+        // 1. 動かそうとしているボールが自分の色か？
+        if (board.GetColor(from.X, from.Y, from.Level) != myColor) return false;
+
+        // 2. そのボールは上に何も乗っていなくて、動かせる状態（回収可能）か？
+        if (!CanRemoveAt(board, from)) return false;
+
+        // 3. 移動先は「今より高い段」か？（ピロスでは同じ段や下には移動できない）
+        if (to.Level <= from.Level) return false;
+
+        // 4. 【重要】自分が自分の土台になるような移動は物理的に不可
+        // from(移動元)が、to(移動先)を直接支える4つのボールのどれかである場合はNG
+        if (to.Level - from.Level == 1)
+        {
+            if ((from.X == to.X || from.X == to.X + 1) &&
+                (from.Y == to.Y || from.Y == to.Y + 1))
+            {
+                return false; // 自分が支えになっている場所には上がれない
+            }
+        }
+
+        // 5. 上記の条件をすべてクリアしていれば、通常の「置けるか判定」で土台が揃っているか確認
+        return CanPlaceAt(board, to);
+    }
 }
