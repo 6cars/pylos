@@ -1,28 +1,15 @@
-using System;
-//using UnityEngine;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
 
-[Serializable]
-public class PylosCoordinate
+namespace Pylos.Backend.Models
 {
-    public int X;
-    public int Y;
-
-    //（Zを使う）
-    public int Z;
-
-    // （Levelを使う）
-    // 「Level」と呼ばれたら、自動的に「Z」の中身を返す！
-    public int Level
+    public struct PylosCoordinate
     {
-        get { return Z; }
-        set { Z = value; }
-    }
-
-    // コンストラクタ
-    public PylosCoordinate(int x, int y, int z)
-    {
-        this.X = x;
-        this.Y = y;
-        this.Z = z;
+        public int Level;
+        public int X;
+        public int Y;
     }
 }
+
+

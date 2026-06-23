@@ -1,69 +1,40 @@
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
+using Pylos.Backend.Models;
 
-// Pylos座標とUnity(Vector3)座標の変換
 public static class CoordinateConverter
 {
-    // グリッドのサイズ（1マスのサイズ）
-    // 実際のゲームの設定に合わせて調整してください
-    private const float GridSize = 1.0f;
-    
-    // 盤面の原点オフセット（必要に応じて調整）
-    private static Vector3 BoardOrigin = Vector3.zero;
-    
-    /// <summary>
-    /// Unityのワールド座標（Vector3）をPylos座標に変換
-    /// </summary>
-    public static PylosCoordinate ToPylosCoordinate(Vector3 worldPosition)
-    {
-        // 原点からの相対位置を計算
-        Vector3 relativePos = worldPosition - BoardOrigin;
-        
-        // グリッド座標に変換（四捨五入）
-        int x = Mathf.RoundToInt(relativePos.x / GridSize);
-        int y = Mathf.RoundToInt(relativePos.z / GridSize); // UnityではZが奥行き
-        int z = Mathf.RoundToInt(relativePos.y / GridSize); // UnityではYが高さ（レベル）
-        
-        return new PylosCoordinate(x, y, z);
-    }
-    
-    /// <summary>
-    /// Pylos座標をUnityのワールド座標に変換
-    /// </summary>
+    private const float Size = 1.2f;
+    private const float HeightFactor = 0.8f; // ピラミッドの沈み込みを考慮した高さ係数
+
     public static Vector3 ToWorldPosition(PylosCoordinate coord)
     {
-        return ToWorldPosition(coord.X, coord.Y, coord.Level);
+        float x = (coord.X + coord.Level * 0.5f) * Size;
+        float y = coord.Level * Size * HeightFactor;
+        float z = (coord.Y + coord.Level * 0.5f) * Size;
+        return new Vector3(x, y, z);
     }
 
-    /// <summary>
-    /// Pylos座標をUnityのワールド座標に変換
-    /// </summary>
-    public static Vector3 ToWorldPosition(int x, int y, int level)
+    public static PylosCoordinate ToPylosCoordinate(Vector3 worldPos)
     {
-        float worldX = x * GridSize;
-        float worldY = level * GridSize;
-        float worldZ = y * GridSize;
+        int level = Mathf.RoundToInt(worldPos.y / (Size * HeightFactor));
+        // レベル範囲外のクランプ
+        level = Mathf.Clamp(level, 0, 3);
 
-        return BoardOrigin + new Vector3(worldX, worldY, worldZ);
-    }
+        int x = Mathf.RoundToInt(worldPos.x / Size - level * 0.5f);
+        int y = Mathf.RoundToInt(worldPos.z / Size - level * 0.5f);
 
-    /// <summary>
-    /// ワールド座標から盤面のマス（x, y）を取得
-    /// </summary>
-    public static (int x, int y) ToBoardCell(Vector3 worldPosition)
-    {
-        Vector3 relativePos = worldPosition - BoardOrigin;
-        int x = Mathf.RoundToInt(relativePos.x / GridSize);
-        int y = Mathf.RoundToInt(relativePos.z / GridSize);
-        return (x, y);
-    }
+        // 各レベルのグリッドサイズは 4 - level
+        int maxIndex = 3 - level;
+        x = Mathf.Clamp(x, 0, maxIndex);
+        y = Mathf.Clamp(y, 0, maxIndex);
 
-    /// <summary>
-    /// 指定段で有効なマスか
-    /// </summary>
-    public static bool IsInsideLevel(int x, int y, int level)
-    {
-        if (level < 0 || level > 3) return false;
-        int limit = 4 - level;
-        return x >= 0 && x < limit && y >= 0 && y < limit;
+        return new PylosCoordinate
+        {
+            Level = level,
+            X = x,
+            Y = y
+        };
     }
 }

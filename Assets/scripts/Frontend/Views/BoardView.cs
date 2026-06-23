@@ -1,654 +1,311 @@
-using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
+using UnityEngine;
+using Pylos.Backend.Models;
 
-// 盤面の3D表示管理
+[ExecuteAlways]
 public class BoardView : MonoBehaviour
 {
-    [Header("ボールプレハブ")]
-    [SerializeField] private GameObject whiteBallPrefab; // 白いボールのプレハブ
-    [SerializeField] private GameObject blackBallPrefab; // 黒いボールのプレハブ
-    
-    // 注意: 古いballPrefabフィールドは削除されました。whiteBallPrefabとblackBallPrefabを使用してください。
-    
-    [Header("プレゼンター参照")]
-    [SerializeField] private PylosGamePresenter presenter;
-    
-    // 座標からBallViewへのマッピング
-    private Dictionary<string, BallView> _ballViews = new Dictionary<string, BallView>();
-    
-    // ボールの親オブジェクト（整理用）
-    private Transform _ballsParent;
-    
-    // グリッド線の親オブジェクト
-    private Transform _gridParent;
-    
-    // ハイライトの親オブジェクト
-    private Transform _highlightParent;
-    private Transform _levelSurfacesParent;
-    private Dictionary<string, GameObject> _highlights = new Dictionary<string, GameObject>();
-    
-    [Header("ハイライト設定")]
-    [SerializeField] private Color highlightColor = new Color(0f, 1f, 0f, 0.3f); // ハイライトの色（緑、半透明）
-    [SerializeField] private float highlightHeight = 0.05f; // ハイライトの高さ
-    [SerializeField] private bool showPlacementHighlights = true; // 配置可能な場所をハイライト表示するか
-    
-    [Header("グリッド設定")]
-    [SerializeField] private Color gridLineColor = new Color(0.5f, 0.5f, 0.5f, 1.0f); // グリッド線の色
-    [SerializeField] private float gridLineWidth = 0.02f; // グリッド線の太さ
-    [SerializeField] private float gridHeight = 0.01f; // グリッド線の高さ（盤面より少し上）
-    [SerializeField] private Material gridLineMaterial; // グリッド線用のマテリアル（オプション）
-    
+    private Dictionary<string, GameObject> spawnPyramidSlotObjects = new Dictionary<string, GameObject>();
+    private Dictionary<string, GameObject> placedBallObjects = new Dictionary<string, GameObject>();
+
+    private Material whiteMaterial;
+    private Material blackMaterial;
+    private Material slotMaterial;
+    private Material boardMaterial;
+
+    private void InitializeMaterials()
+    {
+        if (whiteMaterial != null) return;
+
+        // マテリアルの動的作成
+        // URP とビルトインパイプラインの両方に対応するため、適切なシェーダーを順に探索
+        Shader standardShader = Shader.Find("Universal Render Pipeline/Lit");
+        bool isURP = true;
+        if (standardShader == null)
+        {
+            isURP = false;
+            standardShader = Shader.Find("Standard");
+        }
+        if (standardShader == null)
+        {
+            standardShader = Shader.Find("Diffuse");
+        }
+
+        whiteMaterial = new Material(standardShader);
+        whiteMaterial.color = Color.white;
+        if (isURP)
+        {
+            whiteMaterial.SetFloat("_Smoothness", 0.8f);
+        }
+        else
+        {
+            whiteMaterial.SetFloat("_Glossiness", 0.8f);
+        }
+
+        blackMaterial = new Material(standardShader);
+        blackMaterial.color = new Color(0.1f, 0.1f, 0.1f);
+        if (isURP)
+        {
+            blackMaterial.SetFloat("_Smoothness", 0.8f);
+        }
+        else
+        {
+            blackMaterial.SetFloat("_Glossiness", 0.8f);
+        }
+
+        boardMaterial = new Material(standardShader);
+        boardMaterial.color = new Color(0.5f, 0.35f, 0.2f); // 木製風の茶色
+        if (isURP)
+        {
+            boardMaterial.SetFloat("_Smoothness", 0.2f);
+        }
+        else
+        {
+            boardMaterial.SetFloat("_Glossiness", 0.2f);
+        }
+
+        slotMaterial = new Material(standardShader);
+        // 黄色い光るスロット（半透明、アルファ高め）
+        slotMaterial.color = new Color(0.9f, 0.8f, 0.1f, 0.7f);
+        
+        if (isURP)
+        {
+            // URP用の半透明設定
+            slotMaterial.SetFloat("_Surface", 1f); // Transparent
+            slotMaterial.SetFloat("_Blend", 0f); // Alpha
+            slotMaterial.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            slotMaterial.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            slotMaterial.SetInt("_ZWrite", 0);
+            slotMaterial.DisableKeyword("_ALPHATEST_ON");
+            slotMaterial.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            slotMaterial.renderQueue = 3000;
+        }
+        else
+        {
+            // Standard Shader の Fade モードを設定
+            slotMaterial.SetFloat("_Mode", 2f); // 2 = Fade
+            slotMaterial.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            slotMaterial.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            slotMaterial.SetInt("_ZWrite", 0);
+            slotMaterial.DisableKeyword("_ALPHATEST_ON");
+            slotMaterial.EnableKeyword("_ALPHABLEND_ON");
+            slotMaterial.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+            slotMaterial.renderQueue = 3000;
+        }
+    }
+
     private void Awake()
     {
-        // プレゼンターが設定されていない場合は自動検索
-        if (presenter == null)
-        {
-            presenter = FindObjectOfType<PylosGamePresenter>();
-        }
-        
-        // ボールの親オブジェクトを作成
-        _ballsParent = new GameObject("Balls").transform;
-        _ballsParent.SetParent(transform);
-        
-        // グリッド線の親オブジェクトを作成
-        _gridParent = new GameObject("GridLines").transform;
-        _gridParent.SetParent(transform);
-        
-        // ハイライトの親オブジェクトを作成
-        _highlightParent = new GameObject("Highlights").transform;
-        _highlightParent.SetParent(transform);
-
-        // 各段のクリック判定面を作成
-        _levelSurfacesParent = new GameObject("LevelSurfaces").transform;
-        _levelSurfacesParent.SetParent(transform);
-        CreateLevelClickSurfaces();
-        
-        // グリッド線を描画
-        DrawGridLines();
+        InitializeMaterials();
     }
-    
+
     private void OnEnable()
     {
-        GameEvents.OnBallPlaced += OnBallPlaced;
-        GameEvents.OnBallRecovered += OnBallRecovered;
-        GameEvents.OnPhaseChanged += OnPhaseChanged;
-        GameEvents.OnPlayerChanged += OnPlayerChanged;
+        InitializeMaterials();
+        RecreateBoardAndSlots();
     }
-    
-    private void Start()
+
+    private void Update()
     {
-        // PresenterのAwake完了後に初期表示を行う
-        SyncBoardState();
-        UpdateHighlights();
-    }
-    
-    private void OnDisable()
-    {
-        // イベントの購読解除
-        GameEvents.OnBallPlaced -= OnBallPlaced;
-        GameEvents.OnBallRecovered -= OnBallRecovered;
-        GameEvents.OnPhaseChanged -= OnPhaseChanged;
-        GameEvents.OnPlayerChanged -= OnPlayerChanged;
-    }
-    
-    /// <summary>
-    /// ボールが配置された時のイベントハンドラー
-    /// </summary>
-    private void OnBallPlaced(int x, int y, int z, PlayerColor color)
-    {
-        PylosCoordinate coord = new PylosCoordinate(x, y, z);
-        string key = GetCoordinateKey(coord);
-        
-        // 既にボールが存在する場合は更新、存在しない場合は新規作成
-        if (_ballViews.ContainsKey(key))
+        if (!Application.isPlaying)
         {
-            var ballView = _ballViews[key];
-            ballView.PlaceBall(coord, color);
-        }
-        else
-        {
-            CreateBall(coord, color);
-        }
-    }
-    
-    /// <summary>
-    /// ボールが回収された時のイベントハンドラー
-    /// </summary>
-    private void OnBallRecovered(int x, int y, int z)
-    {
-        PylosCoordinate coord = new PylosCoordinate(x, y, z);
-        string key = GetCoordinateKey(coord);
-        
-        if (_ballViews.ContainsKey(key))
-        {
-            var ballView = _ballViews[key];
-            ballView.RecoverBall();
-            
-            // アニメーション完了後に削除（コルーチンで待機）
-            StartCoroutine(RemoveBallAfterAnimation(ballView, key));
-        }
-        
-        // ハイライトを更新
-        UpdateHighlights();
-    }
-    
-    /// <summary>
-    /// フェーズ変更時のイベントハンドラー
-    /// </summary>
-    private void OnPhaseChanged(PhaseState newPhase)
-    {
-        UpdateHighlights();
-    }
-    
-    /// <summary>
-    /// プレイヤー変更時のイベントハンドラー
-    /// </summary>
-    private void OnPlayerChanged(BallColor player)
-    {
-        UpdateHighlights();
-    }
-    
-    /// <summary>
-    /// ボールを作成
-    /// </summary>
-    private void CreateBall(PylosCoordinate coordinate, PlayerColor color)
-    {
-        // 色に応じてプレハブを選択
-        GameObject prefabToUse = null;
-        string prefabName = "";
-        switch (color)
-        {
-            case PlayerColor.White:
-                prefabToUse = whiteBallPrefab;
-                prefabName = "WhiteBallPrefab";
-                break;
-            case PlayerColor.Black:
-                prefabToUse = blackBallPrefab;
-                prefabName = "BlackBallPrefab";
-                break;
-            default:
-                Debug.LogError($"無効な色: {color}");
-                return;
-        }
-        
-        // プレハブが設定されていない場合は自動生成
-        if (prefabToUse == null)
-        {
-            Debug.LogWarning($"ボールプレハブが設定されていません。色: {color} ({prefabName})。自動生成します。");
-            prefabToUse = CreateDefaultBallPrefab(color);
-        }
-        else
-        {
-            Debug.Log($"ボール作成: 色={color}, プレハブ={prefabToUse.name}, 座標=({coordinate.X}, {coordinate.Y}, {coordinate.Z})");
-        }
-        
-        if (prefabToUse == null)
-        {
-            Debug.LogError("ボールプレハブを作成できませんでした");
-            return;
-        }
-        
-        // プレハブからインスタンスを作成
-        GameObject ballObj = Instantiate(prefabToUse, _ballsParent);
-        ballObj.name = $"Ball_{coordinate.X}_{coordinate.Y}_{coordinate.Z}_{color}";
-        
-        // BallViewコンポーネントを取得
-        BallView ballView = ballObj.GetComponent<BallView>();
-        if (ballView == null)
-        {
-            ballView = ballObj.AddComponent<BallView>();
-        }
-        
-        // ボールを初期化
-        ballView.Initialize(coordinate, color);
-        
-        // 配置アニメーションを実行
-        ballView.PlaceBall(coordinate, color);
-        
-        // 辞書に追加
-        string key = GetCoordinateKey(coordinate);
-        _ballViews[key] = ballView;
-        
-        // ハイライトを更新
-        UpdateHighlights();
-    }
-    　
-    /// <summary>
-    /// デフォルトのボールプレハブを作成（プレハブが設定されていない場合）
-    /// </summary>
-    private GameObject CreateDefaultBallPrefab(PlayerColor color)
-    {
-        // Sphereを作成
-        GameObject sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        sphere.transform.localScale = Vector3.one * 0.8f;
-        
-        // Colliderを削除（ボール同士の衝突を防ぐため）
-        Collider collider = sphere.GetComponent<Collider>();
-        if (collider != null)
-        {
-            Destroy(collider);
-        }
-        
-        // マテリアルを作成（複数のシェーダーを試行）
-        Material mat = null;
-        string[] shaderNames = new string[]
-        {
-            "Universal Render Pipeline/Lit",
-            "Standard",
-            "Unlit/Color"
-        };
-        
-        foreach (string shaderName in shaderNames)
-        {
-            Shader shader = Shader.Find(shaderName);
-            if (shader != null)
+            // エディタ上での生存確認と、必要に応じた再生成
+            if (transform.childCount == 0)
             {
-                mat = new Material(shader);
-                break;
-            }
-        }
-        
-        if (mat == null)
-        {
-            Debug.LogError("マテリアルを作成できませんでした");
-            Destroy(sphere);
-            return null;
-        }
-        
-        // 色を設定
-        if (color == PlayerColor.White)
-        {
-            mat.color = Color.white;
-        }
-        else if (color == PlayerColor.Black)
-        {
-            mat.color = Color.black;
-        }
-        
-        // Rendererにマテリアルを設定
-        Renderer renderer = sphere.GetComponent<Renderer>();
-        if (renderer != null)
-        {
-            renderer.material = mat;
-        }
-        
-        return sphere;
-    }
-    
-    /// <summary>
-    /// アニメーション完了後にボールを削除
-    /// </summary>
-    private IEnumerator RemoveBallAfterAnimation(BallView ballView, string key)
-    {
-        // アニメーションが完了するまで待機
-        while (ballView.IsAnimating())
-        {
-            yield return null;
-        }
-        
-        // 辞書から削除
-        if (_ballViews.ContainsKey(key))
-        {
-            _ballViews.Remove(key);
-        }
-        
-        // GameObjectを削除
-        if (ballView != null && ballView.gameObject != null)
-        {
-            Destroy(ballView.gameObject);
-        }
-    }
-    
-    /// <summary>
-    /// 座標からキー文字列を生成
-    /// </summary>
-    private string GetCoordinateKey(PylosCoordinate coord)
-    {
-        return $"{coord.X}_{coord.Y}_{coord.Z}";
-    }
-    
-    /// <summary>
-    /// 座標からキー文字列を生成（オーバーロード）
-    /// </summary>
-    private string GetCoordinateKey(int x, int y, int z)
-    {
-        return $"{x}_{y}_{z}";
-    }
-    
-    /// <summary>
-    /// 盤面の状態を同期（初期化時やリセット時に使用）
-    /// </summary>
-    private void SyncBoardState()
-    {
-        if (presenter == null || presenter.GetBoardModel() == null) return;
-        
-        var board = presenter.GetBoardModel();
-        
-        // 全ての座標をチェック
-        for (int z = 0; z < 4; z++)
-        {
-            int limit = 4 - z;
-            for (int x = 0; x < limit; x++)
-            {
-                for (int y = 0; y < limit; y++)
-                {
-                    if (board.HasBall(x, y, z))
-                    {
-                        PlayerColor color = board.GetColor(x, y, z);
-                        PylosCoordinate coord = new PylosCoordinate(x, y, z);
-                        string key = GetCoordinateKey(coord);
-                        
-                        // 既に存在しない場合のみ作成
-                        if (!_ballViews.ContainsKey(key))
-                        {
-                            CreateBall(coord, color);
-                        }
-                    }
-                }
+                RecreateBoardAndSlots();
             }
         }
     }
-    
-    /// <summary>
-    /// 指定座標のボールを取得
-    /// </summary>
-    public BallView GetBallView(int x, int y, int z)
+
+    public void RecreateBoardAndSlots()
     {
-        string key = GetCoordinateKey(x, y, z);
-        return _ballViews.ContainsKey(key) ? _ballViews[key] : null;
+        // 既存の子オブジェクトをクリーンアップ
+        CleanupChildren();
+
+        InitializeMaterials();
+
+        CreateBoardBase();
+        CreateSlots();
     }
-    
-    /// <summary>
-    /// 全てのボールをクリア
-    /// </summary>
-    public void ClearAllBalls()
+
+    private void CleanupChildren()
     {
-        foreach (var ballView in _ballViews.Values)
+        // エディタモードと実行モードの両方で安全に削除する
+        List<GameObject> children = new List<GameObject>();
+        foreach (Transform child in transform)
         {
-            if (ballView != null && ballView.gameObject != null)
+            children.Add(child.gameObject);
+        }
+
+        foreach (var child in children)
+        {
+            if (Application.isPlaying)
             {
-                Destroy(ballView.gameObject);
-            }
-        }
-        _ballViews.Clear();
-    }
-    
-    /// <summary>
-    /// 4×4のグリッド線を描画
-    /// </summary>
-    private void DrawGridLines()
-    {
-        const int gridSize = 4; // 4×4のマス目
-        const float cellSize = 1.0f; // 1マスのサイズ
-        
-        // 縦線（X方向に固定、Z方向に伸びる）
-        for (int x = 0; x <= gridSize; x++)
-        {
-            float xPos = x * cellSize;
-            Vector3 start = new Vector3(xPos, gridHeight, 0);
-            Vector3 end = new Vector3(xPos, gridHeight, gridSize * cellSize);
-            CreateGridLine($"GridLine_X_{x}", start, end);
-        }
-        
-        // 横線（Z方向に固定、X方向に伸びる）
-        for (int z = 0; z <= gridSize; z++)
-        {
-            float zPos = z * cellSize;
-            Vector3 start = new Vector3(0, gridHeight, zPos);
-            Vector3 end = new Vector3(gridSize * cellSize, gridHeight, zPos);
-            CreateGridLine($"GridLine_Z_{z}", start, end);
-        }
-    }
-    
-    /// <summary>
-    /// グリッド線を作成
-    /// </summary>
-    private void CreateGridLine(string name, Vector3 start, Vector3 end)
-    {
-        GameObject lineObj = new GameObject(name);
-        lineObj.transform.SetParent(_gridParent);
-        
-        LineRenderer lineRenderer = lineObj.AddComponent<LineRenderer>();
-        
-        // マテリアルの設定
-        if (gridLineMaterial != null)
-        {
-            // Inspectorで設定されたマテリアルを使用
-            lineRenderer.material = gridLineMaterial;
-        }
-        else
-        {
-            // デフォルトのマテリアルを作成（複数のシェーダーを試行）
-            Material mat = CreateDefaultLineMaterial();
-            if (mat != null)
-            {
-                lineRenderer.material = mat;
+                Destroy(child);
             }
             else
             {
-                Debug.LogWarning("グリッド線用のマテリアルを作成できませんでした。Inspectorでマテリアルを設定してください。");
-                Destroy(lineObj);
-                return;
+                DestroyImmediate(child);
             }
         }
-        
-        // LineRendererの基本設定
-        lineRenderer.startWidth = gridLineWidth;
-        lineRenderer.endWidth = gridLineWidth;
-        lineRenderer.positionCount = 2;
-        lineRenderer.useWorldSpace = true;
-        lineRenderer.startColor = gridLineColor;
-        lineRenderer.endColor = gridLineColor;
-        
-        // 影の設定（不要なので無効化）
-        lineRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        lineRenderer.receiveShadows = false;
-        
-        // 位置を設定
-        lineRenderer.SetPosition(0, start);
-        lineRenderer.SetPosition(1, end);
+
+        spawnPyramidSlotObjects.Clear();
+        placedBallObjects.Clear();
     }
-    
-    /// <summary>
-    /// デフォルトのLineRenderer用マテリアルを作成
-    /// </summary>
-    private Material CreateDefaultLineMaterial()
+
+    private void CreateBoardBase()
     {
-        // 複数のシェーダーを試行（URP対応）
-        string[] shaderNames = new string[]
-        {
-            "Universal Render Pipeline/Unlit",  // URP用
-            "Unlit/Color",                      // 標準のUnlit
-            "Sprites/Default",                  // スプライト用
-            "Standard"                          // 標準シェーダー
-        };
+        GameObject boardBase = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        boardBase.name = "BoardBase";
+        boardBase.transform.parent = this.transform;
         
-        foreach (string shaderName in shaderNames)
-        {
-            Shader shader = Shader.Find(shaderName);
-            if (shader != null)
-            {
-                Material mat = new Material(shader);
-                mat.color = gridLineColor;
-                return mat;
-            }
-        }
-        
-        return null;
+        // 土台のサイズ (size = 1.2fなので、4x4の範囲は 3.6f。余白を含め 5.2f 四方)
+        boardBase.transform.localScale = new Vector3(5.2f, 0.3f, 5.2f);
+        // 中心位置。CoordinateConverterでのピラミッドの中心座標に合わせる
+        // ピラミッドの中心は、Level 0 の X=1.5, Y=1.5、すなわちワールド座標 (1.8, 0, 1.8)
+        boardBase.transform.position = new Vector3(1.8f, -0.2f, 1.8f);
+        boardBase.GetComponent<Renderer>().sharedMaterial = boardMaterial;
     }
-    
-    /// <summary>
-    /// 配置可能な場所をハイライト表示
-    /// </summary>
-    private void UpdateHighlights()
+
+    private void CreateSlots()
     {
-        if (!showPlacementHighlights)
+        for (int l = 0; l < 4; l++)
         {
-            ClearHighlights();
-            return;
-        }
-        
-        if (presenter == null)
-        {
-            presenter = FindObjectOfType<PylosGamePresenter>();
-        }
-        
-        if (presenter == null || presenter.GetBoardModel() == null)
-        {
-            return;
-        }
-        
-        // 既存のハイライトを削除
-        ClearHighlights();
-        
-        // 設置フェーズの場合のみハイライトを表示
-        PhaseState currentPhase = presenter.GetCurrentPhase();
-        if (currentPhase != PhaseState.Placement)
-        {
-            return;
-        }
-        
-        // 全てのマスをチェック
-        for (int z = 0; z < 4; z++)))
-        {
-            int limit = 4 - z;
-            for (int x = 0; x < limit; x++)
+            int size = 4 - l;
+            for (int x = 0; x < size; x++)
             {
-                for (int y = 0; y < limit; y++)
+                for (int y = 0; y < size; y++)
                 {
-                    if (presenter.CanPlaceAt(x, y, z))
+                    PylosCoordinate coord = new PylosCoordinate { Level = l, X = x, Y = y };
+                    Vector3 pos = CoordinateConverter.ToWorldPosition(coord);
+
+                    GameObject slot = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                    slot.name = $"Slot_L{l}_{x}_{y}";
+                    slot.transform.parent = this.transform;
+                    slot.transform.position = pos;
+                    slot.transform.localScale = new Vector3(0.5f, 0.5f, 0.5f); // スロットは小さめの球
+                    slot.GetComponent<Renderer>().sharedMaterial = slotMaterial;
+                    slot.SetActive(l == 0); // 最下層のみ最初から表示してチラつきと無表示を防ぐ
+
+                    // コライダーをトリガーにして、Raycastが当たるようにする
+                    var col = slot.GetComponent<Collider>();
+                    if (col != null)
                     {
-                        CreateHighlight(x, y, z);
+                        col.isTrigger = true;
                     }
+
+                    string key = GetKey(coord);
+                    spawnPyramidSlotObjects[key] = slot;
                 }
             }
         }
     }
-    
-    /// <summary>
-    /// ハイライトを作成
-    /// </summary>
-    private void CreateHighlight(int x, int y, int z)
+
+    public void PlaceBall(PylosCoordinate coord, BallColor color)
     {
-        string key = GetCoordinateKey(x, y, z);
-        if (_highlights.ContainsKey(key)) return;
-        
-        // ハイライト用のQuadを作成
-        GameObject highlight = GameObject.CreatePrimitive(PrimitiveType.Quad);
-        highlight.name = $"Highlight_{x}_{y}_{z}";
-        highlight.transform.SetParent(_highlightParent);
-        
-        // 位置を設定（各段の高さに合わせる）
-        Vector3 worldPos = CoordinateConverter.ToWorldPosition(x, y, z);
-        highlight.transform.position = worldPos + Vector3.up * highlightHeight;
-        
-        // 回転を設定（QuadはY軸を向くように）
-        highlight.transform.rotation = Quaternion.Euler(90, 0, 0);
-        
-        // サイズを設定（マスより少し小さく）
-        highlight.transform.localScale = Vector3.one * 0.9f;
-        
-        // Colliderを削除
-        Collider collider = highlight.GetComponent<Collider>();
-        if (collider != null)
+        string key = GetKey(coord);
+        if (placedBallObjects.TryGetValue(key, out GameObject existingBall))
         {
-            Destroy(collider);
+            RemoveBall(coord);
         }
+
+        Vector3 pos = CoordinateConverter.ToWorldPosition(coord);
+        GameObject ball = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        ball.name = $"Ball_L{coord.Level}_{coord.X}_{coord.Y}_{color}";
+        ball.transform.parent = this.transform;
+        ball.transform.position = pos;
+        ball.transform.localScale = new Vector3(1.0f, 1.0f, 1.0f); // 置かれる球は標準サイズ (1.0)
+        ball.GetComponent<Renderer>().sharedMaterial = (color == BallColor.White) ? whiteMaterial : blackMaterial;
+
+        // BallViewスクリプトを追加
+        BallView ballView = ball.AddComponent<BallView>();
         
-        // マテリアルを作成（複数のシェーダーを試行）
-        Material mat = null;
-        string[] shaderNames = new string[]
+        placedBallObjects[key] = ball;
+
+        // スロットを非表示にする
+        if (spawnPyramidSlotObjects.TryGetValue(key, out GameObject slot))
         {
-            "Universal Render Pipeline/Unlit",
-            "Unlit/Color",
-            "Sprites/Default",
-            "Standard"
-        };
-        
-        foreach (string shaderName in shaderNames)
-        {
-            Shader shader = Shader.Find(shaderName);
-            if (shader != null)
-            {
-                mat = new Material(shader);
-                break;
-            }
+            slot.SetActive(false);
         }
-        
-        if (mat == null)
-        {
-            Debug.LogWarning("ハイライト用のマテリアルを作成できませんでした");
-            Destroy(highlight);
-            return;
-        }
-        
-        mat.color = highlightColor;
-        
-        // 透明度を有効にする（URPの場合）
-        if (mat.HasProperty("_Surface"))
-        {
-            mat.SetFloat("_Surface", 1); // Transparent
-        }
-        if (mat.HasProperty("_Blend"))
-        {
-            mat.SetFloat("_Blend", 0); // Alpha
-        }
-        
-        // Rendererにマテリアルを設定
-        Renderer renderer = highlight.GetComponent<Renderer>();
-        if (renderer != null)
-        {
-            renderer.material = mat;
-            // レンダリング順序を調整（他のオブジェクトの上に表示）
-            if (renderer is SpriteRenderer spriteRenderer)
-            {
-                spriteRenderer.sortingOrder = 1;
-            }
-        }
-        
-        _highlights[key] = highlight;
-    }
-    
-    /// <summary>
-    /// 全てのハイライトを削除
-    /// </summary>
-    private void ClearHighlights()
-    {
-        foreach (var highlight in _highlights.Values)
-        {
-            if (highlight != null)
-            {
-                Destroy(highlight);
-            }
-        }
-        _highlights.Clear();
     }
 
-    /// <summary>
-    /// 各段の見えないクリック判定面を作成
-    /// </summary>
-    private void CreateLevelClickSurfaces()
+    public void RemoveBall(PylosCoordinate coord)
     {
-        const float surfaceThickness = 0.05f;
-        const float surfaceYOffset = 0.02f;
-
-        for (int z = 0; z < 4; z++)
+        string key = GetKey(coord);
+        if (placedBallObjects.TryGetValue(key, out GameObject ball))
         {
-            int limit = 4 - z;
-            float center = (limit - 1) * 0.5f;
-            float size = limit;
-
-            GameObject surface = new GameObject($"LevelSurface_{z}");
-            surface.transform.SetParent(_levelSurfacesParent);
-            surface.transform.position = new Vector3(center, z + surfaceYOffset, center);
-
-            BoxCollider box = surface.AddComponent<BoxCollider>();
-            box.size = new Vector3(size, surfaceThickness, size);
-
-            BoardLevelSurface levelSurface = surface.AddComponent<BoardLevelSurface>();
-            levelSurface.Initialize(z);
+            var ballView = ball.GetComponent<BallView>();
+            if (ballView != null)
+            {
+                ballView.Remove();
+            }
+            else
+            {
+                if (Application.isPlaying)
+                {
+                    Destroy(ball);
+                }
+                else
+                {
+                    DestroyImmediate(ball);
+                }
+            }
+            placedBallObjects.Remove(key);
         }
+
+        // スロットを再表示
+        if (spawnPyramidSlotObjects.TryGetValue(key, out GameObject slot))
+        {
+            slot.SetActive(true);
+        }
+    }
+
+    public void UpdateSlotVisibility(BoardModel boardModel)
+    {
+        for (int l = 0; l < 4; l++)
+        {
+            int size = 4 - l;
+            for (int x = 0; x < size; x++)
+            {
+                for (int y = 0; y < size; y++)
+                {
+                    PylosCoordinate coord = new PylosCoordinate { Level = l, X = x, Y = y };
+                    string key = GetKey(coord);
+                    
+                    if (!spawnPyramidSlotObjects.TryGetValue(key, out GameObject slot)) continue;
+
+                    // すでに球が置かれている場合は非表示
+                    if (boardModel.BallGrid[l, x, y] != BallColor.None)
+                    {
+                        slot.SetActive(false);
+                        continue;
+                    }
+
+                    // 配置可能かどうかの判定
+                    bool canPlace = false;
+                    if (l == 0)
+                    {
+                        canPlace = true;
+                    }
+                    else
+                    {
+                        int underL = l - 1;
+                        canPlace = 
+                            boardModel.BallGrid[underL, x, y] != BallColor.None &&
+                            boardModel.BallGrid[underL, x + 1, y] != BallColor.None &&
+                            boardModel.BallGrid[underL, x, y + 1] != BallColor.None &&
+                            boardModel.BallGrid[underL, x + 1, y + 1] != BallColor.None;
+                    }
+
+                    slot.SetActive(canPlace);
+                }
+            }
+        }
+    }
+
+    private string GetKey(PylosCoordinate coord)
+    {
+        return $"{coord.Level}_{coord.X}_{coord.Y}";
     }
 }
-
