@@ -18,6 +18,9 @@ public class PylosGamePresenter : MonoBehaviour
     private PhaseState currentPhase = PhaseState.Placement;
     private int placementCountInPhase = 0; // 現在の設置フェーズでの総設置回数 (0..3)
 
+    // 移動元選択用の座標
+    private PylosCoordinate? selectedBallForMove = null;
+
     // 勝敗状態
     private bool isGameOver = false;
     private PlayerState winner = null;
@@ -44,6 +47,7 @@ public class PylosGamePresenter : MonoBehaviour
         public BallColor Color;
         public int PlacementCount = 0; // 各プレイヤーの設置回数 (0..3)
         public int RetrievalRights = 1; // 設置フェーズ開始時に+1されるため初期値は1
+        public int RemainingBalls = 15; // 持ちボール数（初期値15）
     }
 
     void Start()
@@ -151,8 +155,8 @@ public class PylosGamePresenter : MonoBehaviour
             return;
         }
 
-        // 見切れないようサイズを拡張 (320 x 180)
-        GUILayout.BeginArea(new Rect(20, 20, 320, 180), panelStyle);
+        // 見切れないようサイズを拡張 (320 x 220)
+        GUILayout.BeginArea(new Rect(20, 20, 320, 220), panelStyle);
         
         string info = "";
 
@@ -163,7 +167,7 @@ public class PylosGamePresenter : MonoBehaviour
                 : "<color=#808080><b>黒 (BLACK)</b></color>";
             info = $"<b>【GAME OVER - ゲーム終了】</b>\n\n" +
                    $"勝者: {winnerStr} の勝利です！\n\n" +
-                   $"ピラミッドの最上段を制しました。";
+                   $"ピラミッドが完成したか、または動けなくなりました。";
         }
         else
         {
@@ -178,8 +182,13 @@ public class PylosGamePresenter : MonoBehaviour
             info = $"<b>【PYLOS GAME INFO】</b>\n\n" +
                    $"<color=#00FFFF>◆ ターン:</color> {turnStr}\n" +
                    $"<color=#FFD700>◆ フェーズ:</color> {phaseStr}\n" +
-                   $"<color=#ADFF2F>◆ 回収権 (白):</color> {whitePlayer.RetrievalRights} 個\n" +
-                   $"<color=#ADFF2F>◆ 回収権 (黒):</color> {blackPlayer.RetrievalRights} 個";
+                   $"<color=#ADFF2F>◆ 持ち球 (白):</color> {whitePlayer.RemainingBalls} 個 / (黒): {blackPlayer.RemainingBalls} 個\n" +
+                   $"<color=#ADFF2F>◆ 回収権 (白):</color> {whitePlayer.RetrievalRights} 個 / (黒): {blackPlayer.RetrievalRights} 個";
+
+            if (currentPhase == PhaseState.Placement && selectedBallForMove != null)
+            {
+                info += $"\n<color=#FF8C00>◆ 選択中球:</color> L{selectedBallForMove.Value.Level} ({selectedBallForMove.Value.X},{selectedBallForMove.Value.Y}) 移動先を選択してください。";
+            }
         }
 
         GUILayout.Label(info, textStyle);
@@ -358,7 +367,102 @@ public class PylosGamePresenter : MonoBehaviour
 
     private void HandlePlacementClick(PylosCoordinate coord)
     {
-        if (boardModel.BallGrid[coord.Level, coord.X, coord.Y] != BallColor.None) return;
+        // 1. クリックされた位置にすでにボールがある場合（移動元の選択/切り替え/解除）
+        if (boardModel.BallGrid[coord.Level, coord.X, coord.Y] != BallColor.None)
+        {
+            // 自分のボールであり、かつ上に他のボールが乗っていない（フリー）であること
+            if (boardModel.BallGrid[coord.Level, coord.X, coord.Y] == currentPlayer.Color && !IsSupportingOthers(coord))
+            {
+                if (selectedBallForMove != null && 
+                    selectedBallForMove.Value.Level == coord.Level && 
+                    selectedBallForMove.Value.X == coord.X && 
+                    selectedBallForMove.Value.Y == coord.Y)
+                {
+                    // 同じボールをクリック：選択解除
+                    boardView.HighlightBall(selectedBallForMove.Value, false);
+                    selectedBallForMove = null;
+                }
+                else
+                {
+                    // 別のボールを選択：選択切り替え
+                    if (selectedBallForMove != null)
+                    {
+                        boardView.HighlightBall(selectedBallForMove.Value, false);
+                    }
+                    selectedBallForMove = coord;
+                    boardView.HighlightBall(selectedBallForMove.Value, true);
+                }
+            }
+            return;
+        }
+
+        // 2. クリックされた位置が空スロットの場合
+        // 2a. 移動処理
+        if (selectedBallForMove != null)
+        {
+            PylosCoordinate src = selectedBallForMove.Value;
+
+            // 移動先が移動元より高いレベルであること
+            if (coord.Level <= src.Level) return;
+
+            // 移動元が移動先の土台を構成する一部でないこと
+            if (coord.Level > 0)
+            {
+                int underL = coord.Level - 1;
+                bool isBaseOfDest = 
+                    (src.Level == underL && src.X == coord.X && src.Y == coord.Y) ||
+                    (src.Level == underL && src.X == coord.X + 1 && src.Y == coord.Y) ||
+                    (src.Level == underL && src.X == coord.X && src.Y == coord.Y + 1) ||
+                    (src.Level == underL && src.X == coord.X + 1 && src.Y == coord.Y + 1);
+
+                if (isBaseOfDest) return;
+
+                // 土台が存在すること
+                bool hasBase = 
+                    boardModel.BallGrid[underL, coord.X, coord.Y] != BallColor.None &&
+                    boardModel.BallGrid[underL, coord.X + 1, coord.Y] != BallColor.None &&
+                    boardModel.BallGrid[underL, coord.X, coord.Y + 1] != BallColor.None &&
+                    boardModel.BallGrid[underL, coord.X + 1, coord.Y + 1] != BallColor.None;
+
+                if (!hasBase) return;
+            }
+
+            // 移動実行
+            selectedBallForMove = null;
+            boardView.HighlightBall(src, false);
+
+            boardModel.RemoveBall(src);
+            if (boardView != null) boardView.RemoveBall(src);
+
+            boardModel.PlaceBall(coord, currentPlayer.Color);
+            if (boardView != null) boardView.PlaceBall(coord, currentPlayer.Color);
+
+            // 最上段勝利判定
+            if (coord.Level == 3)
+            {
+                isGameOver = true;
+                winner = currentPlayer;
+                Debug.Log($"Game Over! Winner: {winner.Color}");
+                if (boardView != null) boardView.UpdateSlotVisibility(boardModel);
+                return;
+            }
+
+            // 完成チェック
+            bool squareFormed = CheckSquareFormation(coord, currentPlayer.Color);
+            bool lineFormed = CheckLineFormation(coord, currentPlayer.Color);
+            if (squareFormed || lineFormed)
+            {
+                currentPlayer.RetrievalRights += 1;
+                Debug.Log($"Pattern formed by move! {currentPlayer.Color} RetrievalRights = {currentPlayer.RetrievalRights}");
+            }
+
+            currentPlayer.PlacementCount += 1;
+            SwitchTurn();
+            return;
+        }
+
+        // 2b. 手元からの配置処理
+        if (currentPlayer.RemainingBalls <= 0) return; // ボールがない場合は配置不可
 
         if (coord.Level > 0)
         {
@@ -377,6 +481,7 @@ public class PylosGamePresenter : MonoBehaviour
         {
             boardView.PlaceBall(coord, currentPlayer.Color);
         }
+        currentPlayer.RemainingBalls -= 1;
 
         // 最上段(Level 3)に球を置いたプレイヤーが勝利
         if (coord.Level == 3)
@@ -386,23 +491,22 @@ public class PylosGamePresenter : MonoBehaviour
             Debug.Log($"Game Over! Winner: {winner.Color}");
             if (boardView != null)
             {
-                boardView.UpdateSlotVisibility(boardModel); // 全非表示にする
+                boardView.UpdateSlotVisibility(boardModel);
             }
             return;
         }
 
         // 2x2 または 1列完成チェック
-        bool squareFormed = CheckSquareFormation(coord, currentPlayer.Color);
-        bool lineFormed = CheckLineFormation(coord, currentPlayer.Color);
+        bool sFormed = CheckSquareFormation(coord, currentPlayer.Color);
+        bool lFormed = CheckLineFormation(coord, currentPlayer.Color);
 
-        if (squareFormed || lineFormed)
+        if (sFormed || lFormed)
         {
             currentPlayer.RetrievalRights += 1;
             Debug.Log($"Pattern formed! {currentPlayer.Color} RetrievalRights = {currentPlayer.RetrievalRights}");
         }
 
         currentPlayer.PlacementCount += 1;
-
         SwitchTurn();
     }
 
@@ -422,6 +526,7 @@ public class PylosGamePresenter : MonoBehaviour
             boardView.RemoveBall(coord);
         }
 
+        currentPlayer.RemainingBalls += 1; // 回収したので手元に戻す
         currentPlayer.RetrievalRights -= 1;
         
         SwitchRetrievalTurn();
@@ -438,7 +543,29 @@ public class PylosGamePresenter : MonoBehaviour
 
     private void SwitchTurn()
     {
-        // 白と黒がそれぞれ3回設置したか？
+        if (selectedBallForMove != null)
+        {
+            boardView.HighlightBall(selectedBallForMove.Value, false);
+            selectedBallForMove = null;
+        }
+
+        var nextPlayer = (currentPlayer == whitePlayer) ? blackPlayer : whitePlayer;
+
+        // 交代先のプレイヤーが操作不可能なら、そのプレイヤーはパス（PlacementCount = 3）とする
+        if (!CanPlayerMakeMove(nextPlayer))
+        {
+            nextPlayer.PlacementCount = 3;
+            if (!CanPlayerMakeMove(currentPlayer))
+            {
+                currentPlayer.PlacementCount = 3;
+            }
+        }
+        else
+        {
+            currentPlayer = nextPlayer;
+        }
+
+        // 白と黒がそれぞれ3回設置（または操作不可で3とみなされた）したか？
         if (whitePlayer.PlacementCount >= 3 && blackPlayer.PlacementCount >= 3)
         {
             currentPhase = PhaseState.Retrieval;
@@ -451,11 +578,56 @@ public class PylosGamePresenter : MonoBehaviour
             {
                 currentPlayer = blackPlayer;
             }
+
+            // 両者ともに回収権がない場合、即座に次の設置フェーズへ進む
+            if (whitePlayer.RetrievalRights <= 0 && blackPlayer.RetrievalRights <= 0)
+            {
+                PrepareNextPlacementPhase();
+                return;
+            }
         }
         else
         {
             currentPhase = PhaseState.Placement;
-            currentPlayer = (currentPlayer == whitePlayer) ? blackPlayer : whitePlayer;
+        }
+
+        // ゲーム全体の終了条件：両者ともに操作不可能であり、かつ回収権もない場合
+        if (currentPhase == PhaseState.Placement && !CanPlayerMakeMove(whitePlayer) && !CanPlayerMakeMove(blackPlayer))
+        {
+            isGameOver = true;
+            // 残りボール数が多い方を勝者とする
+            winner = (whitePlayer.RemainingBalls >= blackPlayer.RemainingBalls) ? whitePlayer : blackPlayer;
+            Debug.Log($"Game Over! Both players stuck. Winner: {winner.Color}");
+            if (boardView != null) boardView.UpdateSlotVisibility(boardModel);
+            return;
+        }
+
+        if (boardView != null)
+        {
+            boardView.UpdateSlotVisibility(boardModel);
+        }
+
+        TriggerAIIfNeeded();
+    }
+
+    private void PrepareNextPlacementPhase()
+    {
+        currentPhase = PhaseState.Placement;
+        
+        whitePlayer.PlacementCount = 0;
+        blackPlayer.PlacementCount = 0;
+        
+        whitePlayer.RetrievalRights += 1;
+        blackPlayer.RetrievalRights += 1;
+        
+        currentPlayer = whitePlayer;
+
+        // 次のフェーズに移った時に、白が操作不可なら、SwitchTurn を呼び出して適切にパス処理を行う
+        if (!CanPlayerMakeMove(whitePlayer))
+        {
+            whitePlayer.PlacementCount = 3;
+            SwitchTurn();
+            return;
         }
 
         if (boardView != null)
@@ -471,21 +643,8 @@ public class PylosGamePresenter : MonoBehaviour
         // 両者の回収権が0になったか？
         if (whitePlayer.RetrievalRights <= 0 && blackPlayer.RetrievalRights <= 0)
         {
-            // 設置フェーズを再開
-            currentPhase = PhaseState.Placement;
-            
-            // 各プレイヤーの設置カウントをリセット
-            whitePlayer.PlacementCount = 0;
-            blackPlayer.PlacementCount = 0;
-            
-            // 設置フェーズ開始なので回収権を1ずつ与える
-            whitePlayer.RetrievalRights += 1;
-            blackPlayer.RetrievalRights += 1;
-            
-            // ターンは白から再開
-            currentPlayer = whitePlayer;
-            
             Debug.Log("Both players finished retrieval. Resuming placement phase!");
+            PrepareNextPlacementPhase();
         }
         else
         {
@@ -516,9 +675,13 @@ public class PylosGamePresenter : MonoBehaviour
         
         whitePlayer.PlacementCount = 0;
         whitePlayer.RetrievalRights = 1;
+        whitePlayer.RemainingBalls = 15;
         
         blackPlayer.PlacementCount = 0;
         blackPlayer.RetrievalRights = 1;
+        blackPlayer.RemainingBalls = 15;
+        
+        selectedBallForMove = null;
         
         currentPlayer = whitePlayer;
         currentPhase = PhaseState.Placement;
@@ -529,6 +692,10 @@ public class PylosGamePresenter : MonoBehaviour
 
         if (boardView != null)
         {
+            if (selectedBallForMove != null)
+            {
+                boardView.HighlightBall(selectedBallForMove.Value, false);
+            }
             boardView.RecreateBoardAndSlots();
             boardView.UpdateSlotVisibility(boardModel);
         }
@@ -627,6 +794,82 @@ public class PylosGamePresenter : MonoBehaviour
         return false;
     }
 
+    private bool CanPlayerMakeMove(PlayerState player)
+    {
+        if (player.RemainingBalls > 0) return true;
+        return HasValidMove(player.Color);
+    }
+
+    private bool HasValidMove(BallColor color)
+    {
+        List<PylosCoordinate> myFreeBalls = new List<PylosCoordinate>();
+        for (int l = 0; l < 4; l++)
+        {
+            int size = 4 - l;
+            for (int x = 0; x < size; x++)
+            {
+                for (int y = 0; y < size; y++)
+                {
+                    if (boardModel.BallGrid[l, x, y] == color && !IsSupportingOthers(new PylosCoordinate { Level = l, X = x, Y = y }))
+                    {
+                        myFreeBalls.Add(new PylosCoordinate { Level = l, X = x, Y = y });
+                    }
+                }
+            }
+        }
+
+        if (myFreeBalls.Count == 0) return false;
+
+        List<PylosCoordinate> openSlots = new List<PylosCoordinate>();
+        for (int l = 1; l < 4; l++)
+        {
+            int size = 4 - l;
+            for (int x = 0; x < size; x++)
+            {
+                for (int y = 0; y < size; y++)
+                {
+                    if (boardModel.BallGrid[l, x, y] == BallColor.None)
+                    {
+                        int underL = l - 1;
+                        bool canPlace = 
+                            boardModel.BallGrid[underL, x, y] != BallColor.None &&
+                            boardModel.BallGrid[underL, x + 1, y] != BallColor.None &&
+                            boardModel.BallGrid[underL, x, y + 1] != BallColor.None &&
+                            boardModel.BallGrid[underL, x + 1, y + 1] != BallColor.None;
+                        if (canPlace)
+                        {
+                            openSlots.Add(new PylosCoordinate { Level = l, X = x, Y = y });
+                        }
+                    }
+                }
+            }
+        }
+
+        foreach (var src in myFreeBalls)
+        {
+            foreach (var dest in openSlots)
+            {
+                if (dest.Level > src.Level)
+                {
+                    // 移動元が移動先の土台を構成する一部でないことをチェック
+                    int underL = dest.Level - 1;
+                    bool isBaseOfDest = 
+                        (src.Level == underL && src.X == dest.X && src.Y == dest.Y) ||
+                        (src.Level == underL && src.X == dest.X + 1 && src.Y == dest.Y) ||
+                        (src.Level == underL && src.X == dest.X && src.Y == dest.Y + 1) ||
+                        (src.Level == underL && src.X == dest.X + 1 && src.Y == dest.Y + 1);
+
+                    if (!isBaseOfDest)
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
     private void TriggerAIIfNeeded()
     {
         if (isGameOver || !isGameStarted) return;
@@ -675,6 +918,52 @@ public class PylosGamePresenter : MonoBehaviour
                 PylosCoordinate coord = placementAI.DecidePlacement(boardModel, currentPlayer.Color);
                 if (coord.Level != -1)
                 {
+                    // AIの手元のボールがない場合、移動可能なボールを自動的に選択して移動させる
+                    if (currentPlayer.RemainingBalls <= 0)
+                    {
+                        List<PylosCoordinate> myFreeBalls = new List<PylosCoordinate>();
+                        for (int l = 0; l < 4; l++)
+                        {
+                            int size = 4 - l;
+                            for (int x = 0; x < size; x++)
+                            {
+                                for (int y = 0; y < size; y++)
+                                {
+                                    if (boardModel.BallGrid[l, x, y] == currentPlayer.Color && !IsSupportingOthers(new PylosCoordinate { Level = l, X = x, Y = y }))
+                                    {
+                                        myFreeBalls.Add(new PylosCoordinate { Level = l, X = x, Y = y });
+                                    }
+                                }
+                            }
+                        }
+
+                        List<PylosCoordinate> candidates = new List<PylosCoordinate>();
+                        foreach (var src in myFreeBalls)
+                        {
+                            if (src.Level < coord.Level)
+                            {
+                                int underL = coord.Level - 1;
+                                bool isBaseOfDest = 
+                                    (src.Level == underL && src.X == coord.X && src.Y == coord.Y) ||
+                                    (src.Level == underL && src.X == coord.X + 1 && src.Y == coord.Y) ||
+                                    (src.Level == underL && src.X == coord.X && src.Y == coord.Y + 1) ||
+                                    (src.Level == underL && src.X == coord.X + 1 && src.Y == coord.Y + 1);
+
+                                if (!isBaseOfDest)
+                                {
+                                    candidates.Add(src);
+                                }
+                            }
+                        }
+
+                        if (candidates.Count > 0)
+                        {
+                            selectedBallForMove = candidates[UnityEngine.Random.Range(0, candidates.Count)];
+                            boardView.HighlightBall(selectedBallForMove.Value, true);
+                            Debug.Log($"AI ({currentPlayer.Color}) selected ball to move: L{selectedBallForMove.Value.Level} ({selectedBallForMove.Value.X},{selectedBallForMove.Value.Y}) -> L{coord.Level} ({coord.X},{coord.Y})");
+                        }
+                    }
+
                     HandlePlacementClick(coord);
                 }
                 else

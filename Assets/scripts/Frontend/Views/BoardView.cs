@@ -304,6 +304,43 @@ public class BoardView : MonoBehaviour
         }
     }
 
+    private GameObject highlightedBallObj = null;
+    private Color originalColor;
+
+    public void HighlightBall(PylosCoordinate coord, bool highlight)
+    {
+        if (!highlight)
+        {
+            if (highlightedBallObj != null)
+            {
+                var renderer = highlightedBallObj.GetComponent<Renderer>();
+                if (renderer != null)
+                {
+                    renderer.material.color = originalColor;
+                }
+                highlightedBallObj = null;
+            }
+            return;
+        }
+
+        string key = GetKey(coord);
+        if (placedBallObjects.TryGetValue(key, out GameObject ball))
+        {
+            if (highlightedBallObj != null)
+            {
+                HighlightBall(coord, false); // 前のハイライトをクリア
+            }
+
+            var renderer = ball.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                highlightedBallObj = ball;
+                originalColor = renderer.sharedMaterial.color;
+                renderer.material.color = Color.red; // 赤色にハイライト
+            }
+        }
+    }
+
     private string GetKey(PylosCoordinate coord)
     {
         return $"{coord.Level}_{coord.X}_{coord.Y}";
