@@ -1,6 +1,14 @@
-public enum BallColor
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace Pylos.Backend.Models
 {
-    None = 0,   // Ç»Çµ
-    White = 1,  // îí
-    Black = 2   // çï
+    public enum BallColor
+    {
+        None,
+        White,
+        Black
+    }
 }
+

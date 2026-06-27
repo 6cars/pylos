@@ -1,8 +1,20 @@
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
-// ボール単体の制御（移動アニメーションなど）
+
+
 public class BallView : MonoBehaviour
 {
-    // TODO: 実装
+    public void MoveTo(Vector3 target)
+    {
+        transform.position = target;
+    }
+
+    public void Remove()
+    {
+        Destroy(gameObject);
+    }
 }
+
 
