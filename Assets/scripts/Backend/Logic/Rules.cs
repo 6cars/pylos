@@ -108,8 +108,8 @@ namespace Pylos.Backend.Logic
             int placedY = coord.Y;
             int level = coord.Level;
 
-            // 3段目 (最上段) は 1x1 なのでライン判定から除外する (4段目はラインを作れない)
-            if (level >= 3) return false;
+            // 2段目 (2x2) と3段目 (最上段) はライン判定から除外する
+            if (level >= 2) return false;
 
             BallColor myColor = board.GetColor(placedX, placedY, level);
             if (myColor == BallColor.None) return false;
