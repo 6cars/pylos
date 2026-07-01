@@ -916,6 +916,72 @@ public class PylosGamePresenter : MonoBehaviour
             if (placementAI != null)
             {
                 PylosMove move = placementAI.DecidePlacement(boardModel, currentPlayer.Color, currentPlayer.RemainingBalls);
+                
+                // --- 安全装置（バリデーター）開始 ---
+                bool isValid = true;
+                string errorReason = "";
+
+                if (move.To.Level == -1)
+                {
+                    isValid = false;
+                    errorReason = "配置先座標が -1 です。";
+                }
+                else
+                {
+                    // 1. 配置先スロットが空かチェック
+                    if (boardModel.BallGrid[move.To.Level, move.To.X, move.To.Y] != BallColor.None)
+                    {
+                        isValid = false;
+                        errorReason = $"配置先 L{move.To.Level}({move.To.X},{move.To.Y}) にすでに球があります。";
+                    }
+
+                    // 2. 移動元が指定されている場合
+                    if (isValid && move.From != null && move.From.Value.Level != -1)
+                    {
+                        PylosCoordinate src = move.From.Value;
+                        // 移動元の球が自分の色か
+                        if (boardModel.BallGrid[src.Level, src.X, src.Y] != currentPlayer.Color)
+                        {
+                            isValid = false;
+                            errorReason = $"移動元の球 L{src.Level}({src.X},{src.Y}) が自分の色ではありません。";
+                        }
+                        // 移動元の球の上に別の球が乗っていないか
+                        else if (IsSupportingOthers(src))
+                        {
+                            isValid = false;
+                            errorReason = $"移動元の球 L{src.Level}({src.X},{src.Y}) の上に別の球が乗っているため動かせません。";
+                        }
+                        // 移動ルール（レベルが移動先より低いこと、土台になっていないことなど）に適合しているか
+                        else if (!Pylos.Backend.Logic.Rules.CanMoveBall(boardModel, src, move.To, currentPlayer.Color))
+                        {
+                            isValid = false;
+                            errorReason = $"ルール上、L{src.Level}({src.X},{src.Y}) から L{move.To.Level}({move.To.X},{move.To.Y}) への移動は許可されていません。";
+                        }
+                    }
+                    // 3. 手元から置く場合
+                    else if (isValid)
+                    {
+                        if (currentPlayer.RemainingBalls <= 0)
+                        {
+                            isValid = false;
+                            errorReason = "手元の球が0個なのに、手元からの配置を選択しました。";
+                        }
+                        else if (!Pylos.Backend.Logic.Rules.CanPlaceAt(boardModel, move.To))
+                        {
+                            isValid = false;
+                            errorReason = $"配置先 L{move.To.Level}({move.To.X},{move.To.Y}) に置くための土台が揃っていません。";
+                        }
+                    }
+                }
+
+                // 不正な手が検出された場合は、安全なデフォルトランダム行動にフォールバック
+                if (!isValid)
+                {
+                    Debug.LogWarning($"[AI安全装置] AI ({currentPlayer.Color}) が不正な配置アクションを返しました: {errorReason} -> ランダム配置にフォールバックします。");
+                    move = randomAI.DecidePlacement(boardModel, currentPlayer.Color, currentPlayer.RemainingBalls);
+                }
+                // --- 安全装置（バリデーター）終了 ---
+
                 if (move.To.Level != -1)
                 {
                     if (move.From != null && move.From.Value.Level != -1)
@@ -948,6 +1014,35 @@ public class PylosGamePresenter : MonoBehaviour
             if (retrievalAI != null)
             {
                 PylosCoordinate coord = retrievalAI.DecideRetrieval(boardModel, currentPlayer.Color);
+                
+                // --- 安全装置（バリデーター）開始 ---
+                bool isValid = true;
+                string errorReason = "";
+
+                if (coord.Level != -1)
+                {
+                    // 1. その位置に自分の球があるかチェック
+                    if (boardModel.BallGrid[coord.Level, coord.X, coord.Y] != currentPlayer.Color)
+                    {
+                        isValid = false;
+                        errorReason = $"指定された回収球 L{coord.Level}({coord.X},{coord.Y}) が自分の色ではありません。";
+                    }
+                    // 2. その球の上に別の球が乗っていないかチェック
+                    else if (IsSupportingOthers(coord))
+                    {
+                        isValid = false;
+                        errorReason = $"指定された回収球 L{coord.Level}({coord.X},{coord.Y}) の上に別の球が乗っているため回収できません。";
+                    }
+                }
+
+                // 不正な手が検出された場合は、安全なデフォルトランダム行動にフォールバック
+                if (!isValid)
+                {
+                    Debug.LogWarning($"[AI安全装置] AI ({currentPlayer.Color}) が不正な回収を返しました: {errorReason} -> ランダム回収にフォールバックします。");
+                    coord = randomAI.DecideRetrieval(boardModel, currentPlayer.Color);
+                }
+                // --- 安全装置（バリデーター）終了 ---
+
                 if (coord.Level == -1)
                 {
                     HandleSkipAction();
