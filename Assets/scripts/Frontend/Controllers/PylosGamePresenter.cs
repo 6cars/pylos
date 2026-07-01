@@ -742,6 +742,8 @@ public class PylosGamePresenter : MonoBehaviour
     private bool CheckLineFormation(PylosCoordinate coord, BallColor color)
     {
         int l = coord.Level;
+        if (l >= 2) return false;
+
         int size = 4 - l;
         if (size < 2) return false;
 
