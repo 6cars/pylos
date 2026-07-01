@@ -915,56 +915,21 @@ public class PylosGamePresenter : MonoBehaviour
 
             if (placementAI != null)
             {
-                PylosCoordinate coord = placementAI.DecidePlacement(boardModel, currentPlayer.Color);
-                if (coord.Level != -1)
+                PylosMove move = placementAI.DecidePlacement(boardModel, currentPlayer.Color, currentPlayer.RemainingBalls);
+                if (move.To.Level != -1)
                 {
-                    // AIの手元のボールがない場合、移動可能なボールを自動的に選択して移動させる
-                    if (currentPlayer.RemainingBalls <= 0)
+                    if (move.From != null && move.From.Value.Level != -1)
                     {
-                        List<PylosCoordinate> myFreeBalls = new List<PylosCoordinate>();
-                        for (int l = 0; l < 4; l++)
-                        {
-                            int size = 4 - l;
-                            for (int x = 0; x < size; x++)
-                            {
-                                for (int y = 0; y < size; y++)
-                                {
-                                    if (boardModel.BallGrid[l, x, y] == currentPlayer.Color && !IsSupportingOthers(new PylosCoordinate { Level = l, X = x, Y = y }))
-                                    {
-                                        myFreeBalls.Add(new PylosCoordinate { Level = l, X = x, Y = y });
-                                    }
-                                }
-                            }
-                        }
-
-                        List<PylosCoordinate> candidates = new List<PylosCoordinate>();
-                        foreach (var src in myFreeBalls)
-                        {
-                            if (src.Level < coord.Level)
-                            {
-                                int underL = coord.Level - 1;
-                                bool isBaseOfDest = 
-                                    (src.Level == underL && src.X == coord.X && src.Y == coord.Y) ||
-                                    (src.Level == underL && src.X == coord.X + 1 && src.Y == coord.Y) ||
-                                    (src.Level == underL && src.X == coord.X && src.Y == coord.Y + 1) ||
-                                    (src.Level == underL && src.X == coord.X + 1 && src.Y == coord.Y + 1);
-
-                                if (!isBaseOfDest)
-                                {
-                                    candidates.Add(src);
-                                }
-                            }
-                        }
-
-                        if (candidates.Count > 0)
-                        {
-                            selectedBallForMove = candidates[UnityEngine.Random.Range(0, candidates.Count)];
-                            boardView.HighlightBall(selectedBallForMove.Value, true);
-                            Debug.Log($"AI ({currentPlayer.Color}) selected ball to move: L{selectedBallForMove.Value.Level} ({selectedBallForMove.Value.X},{selectedBallForMove.Value.Y}) -> L{coord.Level} ({coord.X},{coord.Y})");
-                        }
+                        selectedBallForMove = move.From.Value;
+                        boardView.HighlightBall(selectedBallForMove.Value, true);
+                        Debug.Log($"AI ({currentPlayer.Color}) selected ball to move: L{selectedBallForMove.Value.Level} ({selectedBallForMove.Value.X},{selectedBallForMove.Value.Y}) -> L{move.To.Level} ({move.To.X},{move.To.Y})");
+                    }
+                    else
+                    {
+                        selectedBallForMove = null;
                     }
 
-                    HandlePlacementClick(coord);
+                    HandlePlacementClick(move.To);
                 }
                 else
                 {

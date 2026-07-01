@@ -1,10 +1,10 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 using Pylos.Backend.Models;
 
 public class RandomAI : IAIPlacementAlgorithm, IAIRetrievalAlgorithm
 {
-    public PylosCoordinate DecidePlacement(BoardModel board, BallColor myColor)
+    public PylosMove DecidePlacement(BoardModel board, BallColor myColor, int remainingBalls)
     {
         List<PylosCoordinate> candidates = new List<PylosCoordinate>();
 
@@ -43,10 +43,57 @@ public class RandomAI : IAIPlacementAlgorithm, IAIRetrievalAlgorithm
         if (candidates.Count > 0)
         {
             int idx = Random.Range(0, candidates.Count);
-            return candidates[idx];
+            PylosCoordinate to = candidates[idx];
+
+            // 盤面の移動可能球をリストアップする
+            List<PylosCoordinate> myMovableBalls = new List<PylosCoordinate>();
+            for (int l = 0; l < 4; l++)
+            {
+                int size = 4 - l;
+                for (int x = 0; x < size; x++)
+                {
+                    for (int y = 0; y < size; y++)
+                    {
+                        if (board.BallGrid[l, x, y] == myColor && !IsSupportingOthers(board, l, x, y))
+                        {
+                            myMovableBalls.Add(new PylosCoordinate { Level = l, X = x, Y = y });
+                        }
+                    }
+                }
+            }
+
+            // 移動元候補から「移動先より低いレベル」かつ「移動先の土台ではない」球を絞り込む
+            List<PylosCoordinate> validSources = new List<PylosCoordinate>();
+            foreach (var src in myMovableBalls)
+            {
+                if (src.Level < to.Level)
+                {
+                    int underL = to.Level - 1;
+                    bool isBaseOfDest = 
+                        (src.Level == underL && src.X == to.X && src.Y == to.Y) ||
+                        (src.Level == underL && src.X == to.X + 1 && src.Y == to.Y) ||
+                        (src.Level == underL && src.X == to.X && src.Y == to.Y + 1) ||
+                        (src.Level == underL && src.X == to.X + 1 && src.Y == to.Y + 1);
+
+                    if (!isBaseOfDest)
+                    {
+                        validSources.Add(src);
+                    }
+                }
+            }
+
+            // 手元に球がない、またはランダム（50%の確率）で移動を選択する
+            if (validSources.Count > 0 && (remainingBalls <= 0 || Random.value < 0.5f))
+            {
+                int srcIdx = Random.Range(0, validSources.Count);
+                return new PylosMove { From = validSources[srcIdx], To = to };
+            }
+
+            // 通常の手元からの配置
+            return new PylosMove { From = null, To = to };
         }
 
-        return new PylosCoordinate { Level = -1 };
+        return new PylosMove { To = new PylosCoordinate { Level = -1 } };
     }
 
     public PylosCoordinate DecideRetrieval(BoardModel board, BallColor myColor)
